@@ -1,173 +1,106 @@
-# AI-Portfolio-Analyzer
+# AI Developer Portfolio Analyzer
 
-An AI-powered portfolio analysis platform that evaluates resumes and GitHub repositories, generates skill assessments, highlights missing technologies, and recommends career paths and learning roadmaps.
+A Flask web app that analyzes a student's resume (PDF) and GitHub profile to
+generate scores, a skill-gap analysis, career-path matches, and a personalized
+learning roadmap toward internship readiness.
 
----
+## Tech Stack
+- Python 3 + Flask
+- SQLite (raw `sqlite3`, no ORM)
+- HTML + CSS + Bootstrap 5
+- GitHub REST API
+- pdfplumber (PDF text extraction)
 
-## Table of Contents
+## Folder Structure
+```
+ai_portfolio_analyzer/
+├── app.py                  # Flask app factory / entry point
+├── config.py                # App configuration
+├── utils.py                  # login_required decorator
+├── requirements.txt
+├── database/
+│   └── schema.sql            # SQLite table definitions
+├── models/
+│   └── db.py                  # DB connection helpers
+├── modules/
+│   ├── resume_analyzer.py     # PDF parsing, skill/project extraction, scoring
+│   ├── github_analyzer.py     # GitHub API calls, stats, scoring
+│   └── career_engine.py       # Skill gap, career matching, roadmap logic
+├── routes/
+│   ├── auth.py                 # Register / Login / Logout
+│   ├── dashboard.py            # Main dashboard route
+│   ├── resume.py                 # Resume upload route
+│   └── github.py                 # GitHub analysis route
+├── templates/                  # Jinja2 + Bootstrap 5 templates
+├── static/
+│   ├── css/style.css
+│   └── js/script.js
+├── uploads/                    # Uploaded resume PDFs (gitignored)
+└── instance/                    # portfolio.db SQLite file (auto-created)
+```
 
-- [Overview](#overview)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-  - [CLI](#cli)
-  - [API / Web UI](#api--web-ui)
-- [Architecture](#architecture)
-- [Configuration](#configuration)
-- [Development](#development)
-  - [Testing](#testing)
-  - [Contributing](#contributing)
-- [Roadmap](#roadmap)
-- [License](#license)
-- [Contact](#contact)
+## Setup & Run (VS Code / Terminal)
 
----
+1. **Create a virtual environment** (recommended):
+   ```bash
+   python -m venv venv
+   ```
+   Activate it:
+   - Windows: `venv\Scripts\activate`
+   - macOS/Linux: `source venv/bin/activate`
 
-## Overview
-
-AI-Portfolio-Analyzer helps job-seekers, hiring managers, and developers understand strengths and gaps in technical portfolios. It analyzes resumes and GitHub repositories using AI-driven NLP and static code analysis to produce:
-
-- Skill assessments mapped to industry frameworks
-- Highlighted missing or underrepresented technologies
-- Suggested career paths and role-fit recommendations
-- Personalized learning roadmaps and curated resources
-
-This repository contains the backend, analysis pipelines, model interfaces, and (optionally) frontend code used to deliver these capabilities.
-
-## Features
-
-- Resume parsing and skill/entity extraction (PDF/DOCX)
-- GitHub repository analysis (language detection, activity, tests, docs)
-- Gap detection and prioritized learning roadmap generation
-- Role and career-path recommendation engine using LLMs
-- Exportable reports (JSON/HTML/PDF)
-- REST API for automation and integrations
-
-## Quick Start
-
-Prerequisites
-
-- Python 3.9+
-- Node.js 16+ (if frontend is included)
-- Docker (recommended)
-- An LLM provider API key (OpenAI or compatible)
-
-Local (development) example
-
-1. Clone the repository
-
-   git clone https://github.com/Shehryar-coder/AI-Portfolio-Analyzer.git
-   cd AI-Portfolio-Analyzer
-
-2. Create and activate a virtual environment
-
-   python -m venv .venv
-   source .venv/bin/activate  # macOS / Linux
-   .\.venv\Scripts\activate  # Windows (PowerShell/CMD)
-
-3. Install Python dependencies
-
+2. **Install dependencies**:
+   ```bash
    pip install -r requirements.txt
+   ```
 
-4. Copy the example env and set secrets
+3. **Run the app**:
+   ```bash
+   python app.py
+   ```
 
-   cp .env.example .env
-   # Edit .env and add MODEL_API_KEY, GITHUB_TOKEN, DATABASE_URL, etc.
+4. Open your browser at **http://127.0.0.1:5000**
 
-5. Run the service
+The SQLite database (`instance/portfolio.db`) and its tables are created
+automatically on first run — no manual migration step needed.
 
-   flask run --host 0.0.0.0 --port 8000
+## How It Works
 
-Or using Docker
+1. **Register / Login** — session-based auth, passwords hashed with Werkzeug.
+2. **Upload Resume** — text is extracted with `PyPDF2` for PDF resumes and
+   built-in parsers for DOCX/DOC/TXT/RTF files. Scanned PDFs and images can
+   also be processed with OCR if `Tesseract` is installed.
+   The resume is then matched against a ~100-keyword skill dictionary and
+   scanned for a "Projects" section.
+   A 0-100 score is computed from content length, skills found,
+   projects found, section coverage, and contact-info presence.
+3. **Analyze GitHub** — enter a GitHub username; the app calls the public
+   GitHub REST API (`/users/{username}` and `/users/{username}/repos`) to get
+   total repos, most-used languages, total stars/forks, and computes a 0-100
+   GitHub score.
+4. **Skill Gap Analysis** — resume skills + GitHub language-derived skills are
+   combined and compared against a master industry skill list to show
+   existing / missing / recommended skills.
+5. **Career Recommendation Engine** — combined skills are matched against 5
+   career profiles (Software Engineer, Full Stack Developer, Data Scientist,
+   AI Engineer, Cyber Security Analyst), each showing a match %, required
+   skills, and missing skills.
+6. **Learning Roadmap** — missing skills are grouped into 2-week phases with a
+   suggested mini-project goal for each phase.
+7. **Dashboard** — single page bringing all of the above together.
 
-   docker build -t ai-portfolio-analyzer .
-   docker run --env-file .env -p 8000:8000 ai-portfolio-analyzer
+## Notes & Limitations (by design, for a student project)
 
-## Usage
+- Resume parsing uses keyword + heuristic matching rather than a full NLP
+  pipeline — works best with standard, text-based (not scanned) PDF resumes.
+- GitHub API calls are unauthenticated, so they're subject to GitHub's public
+  rate limit (60 requests/hour per IP). For heavier use, add a personal access
+  token to the `headers` dict in `modules/github_analyzer.py`.
+- Career skill profiles and the master skill dictionary are easy to extend —
+  just edit the lists in `modules/career_engine.py` and
+  `modules/resume_analyzer.py`.
 
-CLI
-
-Analyze a resume and a GitHub repo from the command line:
-
-   python cli/analyze.py --resume path/to/resume.pdf --repo https://github.com/owner/repo
-
-Output: JSON report written to ./reports or printed to stdout.
-
-API / Web UI
-
-POST /api/v1/analyze
-- Body: multipart form with `resume` file and `repo_url` field
-- Response: { "report_id": "...", "summary": { ... } }
-
-Open http://localhost:8000 to access the web dashboard (if included).
-
-## Architecture
-
-- Ingest: Resume parser and GitHub connector
-- Analysis: NLP extractors + static code analysis for repo signals
-- Intelligence: LLM-driven scoring, gap detection, and recommendation generation
-- Presentation: HTTP API and optional frontend dashboard
-
-Main folders
-
-- backend/ — API, orchestration, and model interfaces
-- analysis/ — pipelines and feature extractors
-- models/ — prompt templates and model wrappers
-- cli/ — command-line utilities
-- frontend/ — (optional) web UI
-- docs/ — documentation and examples
-
-## Configuration
-
-Required environment variables (example):
-
-- MODEL_API_KEY — API key for your LLM provider
-- MODEL_PROVIDER — e.g. openai
-- GITHUB_TOKEN — (optional) GitHub token for higher rate limits
-- DATABASE_URL — e.g. sqlite:///data/db.sqlite or Postgres DSN
-- STORAGE_DIR — path to store uploaded artifacts
-
-Do not commit secrets to the repository.
-
-## Development
-
-- Use pre-commit hooks for linting and formatting
-- Follow typing and coding standards used in the repo
-
-Testing
-
-Run unit tests:
-
-   pytest tests/
-
-Run linters / formatters:
-
-   pre-commit run --all-files
-
-Contributing
-
-Contributions are welcome. Typical workflow:
-1. Fork the repository
-2. Create a feature branch (git checkout -b feat/short-description)
-3. Commit and push your changes
-4. Open a Pull Request describing the change
-
-See CONTRIBUTING.md (if present) for more details.
-
-## Roadmap
-
-Planned improvements:
-
-- Deeper static analysis (dependency graphs, security checks)
-- Personalized interactive learning plans and progress tracking
-- Team-level benchmarking and comparisons
-- Additional model providers and on-premise deployment options
-
-## License
-
-This project is available under the MIT License. See LICENSE for details.
-
-## Contact
-
-Created and maintained by Shehryar-coder.
-For questions, bugs, or feature requests, please open an issue in this repository.
+## Database Tables
+- `users` — id, username, email, password_hash, created_at
+- `resume_analysis` — user_id, filename, extracted_skills (JSON), extracted_projects (JSON), resume_score, created_at
+- `github_analysis` — user_id, github_username, total_repos, languages (JSON), total_stars, github_score, created_at
